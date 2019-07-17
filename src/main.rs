@@ -12,10 +12,14 @@ mod tests;
 mod qemu;
 mod serial;
 mod interrupts;
+mod gdt;
+mod memory;
+
+use bootloader::{BootInfo, entry_point};
 
 // the main entry point for the kernel
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+entry_point!(kernel_entry);
+fn kernel_entry(boot_info: &'static BootInfo) -> ! {
     // initialize console and say hi
     console::init();
     println!("storm G4 booting...");
@@ -25,11 +29,28 @@ pub extern "C" fn _start() -> ! {
     test_main();
 
     // initialize the hardware
+    gdt::init();
     interrupts::init();
+    let (mut mapper, mut frame_allocator) = unsafe { memory::init(boot_info.physical_memory_offset, &boot_info.memory_map) };
+    
 
 
 
-    x86_64::instructions::interrupts::int3();
+
+    use x86_64::structures::paging::{Page};
+    use x86_64::VirtAddr;
+
+    // map a previously unmapped page
+    let page = Page::containing_address(VirtAddr::new(0xdeadbeef000));
+    memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
+
+    // write the string `New!` to the screen through the new mapping
+    let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
+    unsafe { page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e)};
+
+
+
+
 
 
     // we should never reach this
