@@ -1,4 +1,4 @@
-use x86_64::structures::paging::{Page, Size4KiB, Mapper, FrameAllocator, MapperAllSizes, PageTable, PhysFrame, MappedPageTable};
+use x86_64::structures::paging::{Page, Size4KiB, Mapper, FrameAllocator, FrameDeallocator, MapperAllSizes, PageTable, PhysFrame, MappedPageTable};
 use x86_64::{PhysAddr, VirtAddr};
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 
@@ -124,5 +124,22 @@ unsafe impl FrameAllocator<Size4KiB> for PhysicalFrameAllocator {
         self.used_frame_count += 1;
 
         Some(PhysFrame::from_start_address(PhysAddr::new(first_free as u64 - self.physical_memory_offset)).unwrap())
+    }
+}
+
+impl FrameDeallocator<Size4KiB> for PhysicalFrameAllocator {
+    fn deallocate_frame(&mut self, frame: PhysFrame) {
+        let free_frame = frame.start_address().as_u64() as *mut FreeFrame;
+        let old_frame = self.first_free.unwrap();
+
+        unsafe {
+            (*free_frame).previous_frame = None;
+            (*free_frame).next_frame = Some(old_frame);
+            (*old_frame).previous_frame = Some(free_frame);
+        }
+
+        self.first_free = Some(free_frame);
+        self.used_frame_count -= 1;
+        self.free_frame_count += 1;
     }
 }
